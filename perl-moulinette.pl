@@ -6,9 +6,11 @@ use Getopt::Long;
 use File::Slurp;
 use Term::ANSIColor;
 use feature 'state';
+use File::Basename;
 
 my $counter;
 my $current_file;
+my $file_basename;
 my $mistakes;
 my $file_content;
 my @globs;
@@ -17,8 +19,12 @@ my @function_names;
 my $braces_depth;
 my $function_loc;
 
+## TODO Check forbidden syscalls
+## TODO Check Order include (system before user)
+## TODO Check malloc == NULL
+## TODO Add option for choosing between building the project with the Makefile and check automatically
+##      or just check *.c files
 ## TODO Global alignment
-## TODO Check header
 ## TODO Once everything finished add options for ignoring checks
 ## TODO Comments aligned, first must be /* and after ** and the last */
 ## /*
@@ -45,8 +51,7 @@ my $function_loc;
 ## TODO No space after the name of the function and '('
 ## TODO Space after a keyword, sizeof is an exception
 ## TODO #ifndef #ifdef #endif need comments /* ! MY_H_ */ if the header file is named my.h
-## TODO No space after unary operator ~/++/!/--/&/*/+/-
-## TODO nothing after a ;
+## TODO No space after unary operator &/*/+/-
 ## TODO Makefile : $(NAME), clean, fclean, re, all are mandatory
 ## TODO Makefile : Check if makefile relink
 ## TODO Makefile : wildcard (*) usage is forbidden
@@ -54,7 +59,7 @@ my $function_loc;
 
 sub print_color
 {
-    my $location_and_error = $current_file.":".$counter.": ".$_[1]."\n";
+    my $location_and_error = $file_basename.":".$counter.": ".$_[1]."\n";
 
     if ($_[0] == 1)
     {
@@ -76,6 +81,26 @@ sub print_color
 
 sub help
 {
+}
+
+sub header
+{
+    my $user = substr `cat /etc/passwd | grep "/home/$ENV{'LOGNAME'}" | cut -d ':' -f 1`, 0, -1;
+    my $fullname = substr `cat /etc/passwd | grep "/home/$ENV{'LOGNAME'}" | cut -d ':' -f 5 | cut -d ',' -f 1`, 0, -1;
+    if ($_[0] ne "/*" ||
+	$_[1] !~ /^\*\* $file_basename for .* in [^\s]*$/ ||
+	$_[2] ne "** " ||
+	$_[3] !~ /^\*\* Made by $fullname$/ ||
+	$_[4] !~ /^\*\* Login   \<$user\@epitech\.net\>$/ ||
+	$_[5] ne "** " ||
+	$_[6] !~ /^\*\* Started on  [A-Za-z]{3} [A-Za-z]{3} [0-9]{2} [0-9]{2}\:[0-9]{2}\:[0-9]{2} [0-9]{4} $fullname$/ ||
+	$_[7] !~ /^\*\* Last update [A-Za-z]{3} [A-Za-z]{3} [0-9]{2} [0-9]{2}\:[0-9]{2}\:[0-9]{2} [0-9]{4} $fullname$/ ||
+	$_[8] ne "*/" ||
+	$_[9] !~ /^\s*$/)
+    {
+	print_color(3, "Invalid header");
+	$mistakes++;
+    }
 }
 
 sub spaces
@@ -107,6 +132,16 @@ sub spaces
     else
     {
 	$blank_line = 0;
+    }
+    if ($_[0] =~ /[~\!]\s/ || $_[0] =~ /\s\+\+/ || $_[0] =~ /\s\-\-/)
+    {
+	print_color(3, "No space after ~/! before ++/--");
+	$mistakes++;
+    }
+    if ($_[0] =~ /if[^\s]/)
+    {
+	print_color(3, "Missing space after keyword");
+	$mistakes++;
     }
 }
 
@@ -152,11 +187,20 @@ sub general_c
 	print_color(3, "Return must have parenthesis");
 	$mistakes++;
     }
+    if ($_[0] =~ /;.+/)
+    {
+	print_color(3, "Something has been detected after a brace(;)");
+	$mistakes++;
+    }
+}
+
+sub comments_c
+{
     if ($braces_depth > 0 && ($_[0] =~ /\/\*/ || $_[0] =~ /\/\//))
     {
 	print_color(3, "Comments in function detected");
 	$mistakes++;
-    }
+    }    
 }
 
 sub ctags_forbidden_c
@@ -261,14 +305,31 @@ sub do_while_forbidden
 
 sub content_c
 {
+    my $multiline_comment = 0;
+    my @splitted_lines = split /\n/, $_[0];
     $braces_depth = 0;
+    header(@splitted_lines);
     function_general_c();
     defines_c($_[0]);
     ctags_forbidden_c();
     global_c();
     do_while_forbidden();
-    for (split /\n/, $_[0])
+    for (@splitted_lines)
     {
+	comments_c($_);
+	if ($_ =~ /\s*?\/\*/)
+	{
+	    $multiline_comment = 1;
+	}
+	if ($_ =~ /\s*?\/\// || $multiline_comment == 1)
+	{
+	    if ($multiline_comment == 1 && $_ =~ /.*\*\/\s*?$/)
+	    {
+		$multiline_comment = 0;
+	    }
+	    $counter++;
+	    next;
+	}
 	general_c($_);
 	spaces($_);
 	function_c($_);
@@ -279,6 +340,7 @@ sub content_c
 sub norme
 {
     $current_file = $_[0];
+    $file_basename = basename($_[0]);
     $file_content = read_file($_[0]);
     $blank_line = 0;
     my $extension = substr $_[0], -2;
@@ -306,6 +368,7 @@ sub main
 	print "\nAnalyzing $_\n";
 	norme($_);
     }
+    print "\nErrors : $mistakes\n\n";
 }
 
 main();
