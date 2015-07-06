@@ -12,18 +12,20 @@ my $current_file;
 my $mistakes;
 my $file_content;
 my @globs;
+my $blank_line;
+my @function_names;
+my $braces_depth;
+my $function_loc;
 
 ## TODO Global alignment
 ## TODO Check header
 ## TODO Once everything finished add options for ignoring checks
-## TODO No comments inside body function
 ## TODO Comments aligned, first must be /* and after ** and the last */
 ## /*
 ##  ** Blabla
 ##  ** Blabla
 ## */
 ## TODO Variables must be aligned with function name
-## TODO no end spaces
 ## TODO alignment must be done with tabs no spaces
 ## TODO Variables, macro, function, ... must be named correctly
 ## TODO no capital letters to variable's names, files and functions only lower case with _ character
@@ -39,12 +41,12 @@ my @globs;
 ## TODO if () { => forbidden
 ##		something
 ##	}
-## TODO Max 4 parameters on functions
 ## TODO Check if too many parameters in one structure
 ## TODO No space after the name of the function and '('
-## TODO Space after a keyword and return must have parenthesis, sizeof is an exception
+## TODO Space after a keyword, sizeof is an exception
 ## TODO #ifndef #ifdef #endif need comments /* ! MY_H_ */ if the header file is named my.h
-## TODO check if function more than 25 lines
+## TODO No space after unary operator ~/++/!/--/&/*/+/-
+## TODO nothing after a ;
 ## TODO Makefile : $(NAME), clean, fclean, re, all are mandatory
 ## TODO Makefile : Check if makefile relink
 ## TODO Makefile : wildcard (*) usage is forbidden
@@ -83,7 +85,29 @@ sub spaces
 	print_color(3, "You need to add a whitespace after a coma");
 	$mistakes++;
     }
-    
+    if ($_[0] =~ /.*\s$/)
+    {
+	print_color(3, "Space detected at the end of the line");
+	$mistakes++;
+    }
+    if ($_[0] =~ /^\s*$/)
+    {
+	if ($blank_line > 0)
+	{
+	    print_color(3, "Too many blank lines");
+	    $mistakes++;
+	}
+	if ($_[0] =~ /^\s+$/)
+	{
+	    print_color(3, "Blank line with spaces detected");
+	    $mistakes++;
+	}
+	$blank_line++;
+    }
+    else
+    {
+	$blank_line = 0;
+    }
 }
 
 sub defines_c
@@ -122,9 +146,15 @@ sub general_c
 	print_color(3, "Forbidden keyword");
 	$mistakes++;
     }
-    if ($_[0] =~ /.*return\s[^\(].*[^\)];/)
+    if ($_[0] =~ /.*return\s[^\(].*;/ ||
+	$_[0] =~ /.*return\s\(.*[^\)];/)
     {
 	print_color(3, "Return must have parenthesis");
+	$mistakes++;
+    }
+    if ($braces_depth > 0 && ($_[0] =~ /\/\*/ || $_[0] =~ /\/\//))
+    {
+	print_color(3, "Comments in function detected");
 	$mistakes++;
     }
 }
@@ -162,9 +192,62 @@ sub function_general_c
     }
     foreach (@funcs)
     {
-	my $single_func = ($_ =~ //g);
+	(my $single_func = $_) =~ s/^.*\s([^\s]*)\(.*\)/$1/;
+	if (length $single_func == 0 ||
+	    $single_func =~ /[^a-zA-z0-9]/)
+	{
+	    print_color(3, "Bad function definition format for $_");
+	    $mistakes++;
+	}
+	else
+	{
+	    push @function_names, $single_func;
+	}
     }
-    print join(",", @funcs), "\n";
+}
+
+sub function_c
+{
+    if ($braces_depth == 0)
+    {
+	foreach my $func (@function_names)
+	{
+	    if ($_[0] =~ /.*\s*$func\(.*\)/)
+	    {
+		my $c = () = $_[0] =~ /,/g;
+		if ($c > 3)
+		{
+		    print_color(3, "More than 4 parameters");
+		    $mistakes++;
+		}
+	    }
+	}
+    }
+    if ($braces_depth > 0)
+    {
+	$function_loc++;
+    }
+    if (index($_[0], "{") != -1)
+    {
+	if ($braces_depth == 0)
+	{
+	    $function_loc = 0;
+	}
+	$braces_depth++;
+    }
+    if (index($_[0], "}") != -1)
+    {
+	$braces_depth--;
+	if ($braces_depth == 0)
+	{
+	    $function_loc--;
+	    if ($function_loc > 25)
+	    {
+		print_color(3, "Function exceeds 25 lines");
+		$mistakes++;
+	    }
+	}
+    }
 }
 
 sub do_while_forbidden
@@ -178,6 +261,7 @@ sub do_while_forbidden
 
 sub content_c
 {
+    $braces_depth = 0;
     function_general_c();
     defines_c($_[0]);
     ctags_forbidden_c();
@@ -187,6 +271,7 @@ sub content_c
     {
 	general_c($_);
 	spaces($_);
+	function_c($_);
 	$counter++;
     }
 }
@@ -195,6 +280,7 @@ sub norme
 {
     $current_file = $_[0];
     $file_content = read_file($_[0]);
+    $blank_line = 0;
     my $extension = substr $_[0], -2;
 
     if ($extension eq ".c")
