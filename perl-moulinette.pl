@@ -18,13 +18,13 @@ my $blank_line;
 my @function_names;
 my $braces_depth;
 my $function_loc;
+my $user_include;
+my $passed_include;
 
 ## TODO Check forbidden syscalls
-## TODO Check Order include (system before user)
 ## TODO Check malloc == NULL
 ## TODO Add option for choosing between building the project with the Makefile and check automatically
 ##      or just check *.c files
-## TODO Global alignment
 ## TODO Once everything finished add options for ignoring checks
 ## TODO Comments aligned, first must be /* and after ** and the last */
 ## /*
@@ -37,7 +37,7 @@ my $function_loc;
 ## TODO no capital letters to variable's names, files and functions only lower case with _ character
 ## TODO everything in english
 ## TODO Defines/Macro must be in capital letters
-## TODO structure = s_, typedef = t_, union = u_, globale = g_
+## TODO structure = s_, typedef = t_, union = u_
 ## TODO One variable per line
 ## TODO one blank line between declaration variables and instructions
 ## TODO No additional blank line between function (only one)
@@ -81,6 +81,31 @@ sub print_color
 
 sub help
 {
+}
+
+sub include_c
+{
+    if ($passed_include == 0 && $_[0] !~ /^\s*?$/ && $_[0] !~ /^\s*?#\s*?include/)
+    {
+	$passed_include = 1;
+    }
+    if ($_[0] =~ /^\s*?#\s*?include/)
+    {
+	if ($passed_include == 1)
+	{
+	    print_color(3, "#include must be located at the top of the file");
+	    $mistakes++;
+	}
+	if ($_[0] =~ /^\s*?#\s*?include\s*?\"/)
+	{
+	    $user_include = 1;
+	}
+	if ($user_include == 1 && $_[0] =~ /^\s*?#\s*?include\s*?\</)
+	{
+	    print_color(3, "System includes must be before user includes");
+	    $mistakes++;
+	}
+    }
 }
 
 sub header
@@ -133,14 +158,19 @@ sub spaces
     {
 	$blank_line = 0;
     }
-    if ($_[0] =~ /[~\!]\s/ || $_[0] =~ /\s\+\+/ || $_[0] =~ /\s\-\-/)
+    if ($_[0] =~ /[~\!]\s/ || $_[0] =~ /\s\+\+/ || $_[0] =~ /\s\-\-/ || $_[0] =~ /\s;/)
     {
-	print_color(3, "No space after ~/! before ++/--");
+	print_color(3, "No space after ~/! before ++/--/;");
 	$mistakes++;
     }
     if ($_[0] =~ /if[^\s]/)
     {
 	print_color(3, "Missing space after keyword");
+	$mistakes++;
+    }
+    if ($braces_depth == 0 && $_[0] =~ /^\s+/)
+    {
+	print_color(3, "Spaces detected at the beginning of the line");
 	$mistakes++;
     }
 }
@@ -221,6 +251,14 @@ sub global_c
     {
 	print_color(2, "Careful you have global somewhere");
 	$mistakes++;
+    }
+    foreach my $cur (@globs)
+    {
+	if ($cur !~ /.*\s+g_.*/)
+	{
+	    print_color(3, "The global $cur must be in the format g_.*");
+	    $mistakes++;
+	}
     }
 }
 
@@ -330,6 +368,7 @@ sub content_c
 	    $counter++;
 	    next;
 	}
+	include_c($_);
 	general_c($_);
 	spaces($_);
 	function_c($_);
@@ -343,6 +382,8 @@ sub norme
     $file_basename = basename($_[0]);
     $file_content = read_file($_[0]);
     $blank_line = 0;
+    $user_include = 0;
+    $passed_include = 0;
     my $extension = substr $_[0], -2;
 
     if ($extension eq ".c")
