@@ -20,18 +20,18 @@ my $braces_depth;
 my $function_loc;
 my $user_include;
 my $passed_include;
+my $static_count;
 
 ## TODO Check forbidden syscalls
 ## TODO Check malloc == NULL
 ## TODO Add option for choosing between building the project with the Makefile and check automatically
 ##      or just check *.c files
-## TODO Once everything finished add options for ignoring checks
+## TODO Once everything finished add options for ignoring checks (general_c control static_count)
 ## TODO Comments aligned, first must be /* and after ** and the last */
 ## /*
 ##  ** Blabla
 ##  ** Blabla
 ## */
-## TODO Variables must be aligned with function name
 ## TODO alignment must be done with tabs no spaces
 ## TODO Variables, macro, function, ... must be named correctly
 ## TODO no capital letters to variable's names, files and functions only lower case with _ character
@@ -42,7 +42,6 @@ my $passed_include;
 ## TODO one blank line between declaration variables and instructions
 ## TODO No additional blank line between function (only one)
 ## TODO Cannot assign and create variable at the same time
-## TODO Count static number if too much print a warning
 ## TODO * must be on the variable not on the type
 ## TODO if () { => forbidden
 ##		something
@@ -222,6 +221,14 @@ sub general_c
 	print_color(3, "Something has been detected after a brace(;)");
 	$mistakes++;
     }
+    if ($braces_depth > 0 && index($_[0], "static") != -1)
+    {
+	$static_count++;
+	if ($static_count > 2)
+	{
+	    print_color(2, "Careful, you have many static variables");
+	}
+    }
 }
 
 sub comments_c
@@ -250,7 +257,6 @@ sub global_c
     if (@globs > 0)
     {
 	print_color(2, "Careful you have global somewhere");
-	$mistakes++;
     }
     foreach my $cur (@globs)
     {
@@ -384,6 +390,7 @@ sub norme
     $blank_line = 0;
     $user_include = 0;
     $passed_include = 0;
+    $static_count = 0;
     my $extension = substr $_[0], -2;
 
     if ($extension eq ".c")
