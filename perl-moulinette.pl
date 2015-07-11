@@ -34,11 +34,6 @@ my $inside_comment;
 ## TODO everything in english
 ## TODO Defines/Macro must be in capital letters
 ## TODO structure = s_, typedef = t_, union = u_
-## TODO One variable per line
-## TODO one blank line between declaration variables and instructions
-## TODO No additional blank line between function (only one)
-## TODO Cannot assign and create variable at the same time
-## TODO * must be on the variable not on the type
 ## TODO if () { => forbidden
 ##		something
 ##	}
@@ -118,6 +113,26 @@ sub header
 	$_[9] !~ /^\s*$/)
     {
 	print_color(3, "Invalid header");
+	$mistakes++;
+    }
+}
+
+sub variable_c
+{
+    if ($_[0] =~ /^\s*\w+\s+\*?\w+\s*\=/)
+    {
+	print_color(3, "You cannot create and assign variable at the same time");
+	$mistakes++;
+    }
+    if ($_[0] =~ /^\s*\w+\s+\*?\w+\s*\,/)
+    {
+	print_color(3, "You cannot declare multiple variable at the same time");
+	$mistakes++;
+    }
+    if ($_[0] =~ /^\s*\w+\*\s+\w+;/ || $_[0] =~ /^\s*\w+\s+\*\s+\w+;/ ||
+	$_[0] =~ /^\s*\w+\*\w+;/)
+    {
+	print_color(3, "* must be on the variable");
 	$mistakes++;
     }
 }
@@ -377,7 +392,11 @@ sub content_c
 {
     my $multiline_comment = 0;
     my @splitted_lines = split /\n/, $_[0];
-    $braces_depth = 0;
+    $inside_comment = 0;
+    $braces_depth = 0;    
+    $user_include = 0;
+    $passed_include = 0;
+    $static_count = 0;
     header(@splitted_lines);
     function_general_c();
     defines_c($_[0]);
@@ -386,7 +405,7 @@ sub content_c
     do_while_forbidden();
     for (@splitted_lines)
     {
-	comments_c($_);
+	comments_c($_, $inside_comment);
 	if ($_ =~ /\s*?\/\*/)
 	{
 	    $multiline_comment = 1;
@@ -404,6 +423,7 @@ sub content_c
 	general_c($_);
 	spaces($_);
 	function_c($_);
+	variable_c($_);
 	$counter++;
     }
 }
@@ -414,10 +434,6 @@ sub norme
     $file_basename = basename($_[0]);
     $file_content = read_file($_[0]);
     $blank_line = 0;
-    $user_include = 0;
-    $passed_include = 0;
-    $static_count = 0;
-    $inside_comment = 0;
     my $extension = substr $_[0], -2;
 
     if ($extension eq ".c")
