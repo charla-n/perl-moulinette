@@ -21,17 +21,13 @@ my $function_loc;
 my $user_include;
 my $passed_include;
 my $static_count;
+my $inside_comment;
 
 ## TODO Check forbidden syscalls
 ## TODO Check malloc == NULL
 ## TODO Add option for choosing between building the project with the Makefile and check automatically
 ##      or just check *.c files
 ## TODO Once everything finished add options for ignoring checks (general_c control static_count)
-## TODO Comments aligned, first must be /* and after ** and the last */
-## /*
-##  ** Blabla
-##  ** Blabla
-## */
 ## TODO alignment must be done with tabs no spaces
 ## TODO Variables, macro, function, ... must be named correctly
 ## TODO no capital letters to variable's names, files and functions only lower case with _ character
@@ -47,7 +43,6 @@ my $static_count;
 ##		something
 ##	}
 ## TODO Check if too many parameters in one structure
-## TODO No space after the name of the function and '('
 ## TODO Space after a keyword, sizeof is an exception
 ## TODO #ifndef #ifdef #endif need comments /* ! MY_H_ */ if the header file is named my.h
 ## TODO No space after unary operator &/*/+/-
@@ -237,7 +232,38 @@ sub comments_c
     {
 	print_color(3, "Comments in function detected");
 	$mistakes++;
-    }    
+    }
+    if ($braces_depth == 0)
+    {
+	if ($_[0] =~ /\s*?\*\//)
+	{
+	    $inside_comment = 0;
+	}
+	if ($_[0] =~ /\/\//)
+	{
+	    print_color(3, "Comments // are forbidden /* */ must be used");
+	    $mistakes++;
+	}
+	if ($_[0] =~ /\s*?\/\*.+/)
+	{
+	    print_color(3, "Something detected after /*");
+	    $mistakes++;
+	}
+	if ($_[0] =~ /\s*?\*\/.+/)
+	{
+	    print_color(3, "Something detected after */");
+	    $mistakes++;
+	}
+	if ($inside_comment == 1 && $_[0] !~ /\s*?\*\*/)
+	{
+	    print_color(3, "Missing ** at the beginning of the comment");
+	    $mistakes++;
+	}
+	if ($_[0] =~ /\s*?\/\*/)
+	{
+	    $inside_comment = 1;
+	}
+    }
 }
 
 sub ctags_forbidden_c
@@ -391,6 +417,7 @@ sub norme
     $user_include = 0;
     $passed_include = 0;
     $static_count = 0;
+    $inside_comment = 0;
     my $extension = substr $_[0], -2;
 
     if ($extension eq ".c")
